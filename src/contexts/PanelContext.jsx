@@ -14,13 +14,12 @@ export const usePanelContext = () => {
 
 export const PanelProvider = ({ children }) => {
   // Persona and characteristic selection
-  const [selectedPersona, setSelectedPersona] = useState('Operator')
-  const [selectedCharacteristic, setSelectedCharacteristic] = useState('Noisy')
+  const [selectedPersona, setSelectedPersona] = useState('Leakage Manager')
+  const [selectedCharacteristic, setSelectedCharacteristic] = useState('Dark')
   
   const [copilotVisible, setCopilotVisible] = useState(false)
   const [eventAreaVisible, setEventAreaVisible] = useState(false)
   const [layersVisible, setLayersVisible] = useState(false)
-  const [pressureZoneVisible, setPressureZoneVisible] = useState(false)
   const [activeTab, setActiveTab] = useState('chat')
   const [chatMessages, setChatMessages] = useState([])
   const [eventContext, setEventContext] = useState(null)
@@ -139,12 +138,6 @@ export const PanelProvider = ({ children }) => {
   }
   
   // Map layer states - contextual: only Burst Events visible on first open
-  const [pressureZonesVisible, setPressureZonesVisible] = useState(false)
-  const [activeRiskLevels, setActiveRiskLevels] = useState({
-    high: true,
-    medium: true,
-    low: true
-  })
   
   // Pressure sensors layer state
   const [pressureSensorsVisible, setPressureSensorsVisible] = useState(false)
@@ -176,6 +169,8 @@ export const PanelProvider = ({ children }) => {
   const [complaintHeatmapVisible, setComplaintHeatmapVisible] = useState(false)
   const [filteredLeakageEventId, setFilteredLeakageEventId] = useState(null) // Filter complaints by leakage event
   const [showFilteredComplaintsOnly, setShowFilteredComplaintsOnly] = useState(false) // When true, only show filtered complaints
+  /** When set (e.g. 'High'), map shows only that priority; null = use theme / leakage filters */
+  const [mapComplaintsPriorityFilter, setMapComplaintsPriorityFilter] = useState(null)
   
   // Leakage events state - for grouping complaints into potential leak events
   const [leakageEvents, setLeakageEvents] = useState(() => {
@@ -266,24 +261,6 @@ export const PanelProvider = ({ children }) => {
     setSelectedLeakageEvent(null)
   }
   
-  // Water mains layer state
-  const [waterMainsVisible, setWaterMainsVisible] = useState(false)
-  const [waterMainsDrawMode, setWaterMainsDrawMode] = useState(false)
-  const [waterMainsDrawLevel, setWaterMainsDrawLevel] = useState('high')
-  const [completeWaterMainRequest, setCompleteWaterMainRequest] = useState(0)
-  const [waterMainDrawPointCount, setWaterMainDrawPointCount] = useState(0)
-  const [waterMainsEditMode, setWaterMainsEditMode] = useState(false)
-  const [selectedWaterMainId, setSelectedWaterMainId] = useState(null)
-  const [deleteWaterMainId, setDeleteWaterMainId] = useState(null)
-  
-  const requestCompleteWaterMain = () => {
-    setCompleteWaterMainRequest((n) => n + 1)
-  }
-  
-  const requestDeleteWaterMain = (waterMainId) => {
-    setDeleteWaterMainId(waterMainId)
-  }
-  
   // Sensor editing mode (for network meters)
   const [sensorEditMode, setSensorEditMode] = useState(false)
   
@@ -298,27 +275,6 @@ export const PanelProvider = ({ children }) => {
   
   // Burst editing mode
   const [burstEditMode, setBurstEditMode] = useState(false)
-  
-  // Pressure zone editing mode
-  const [pressureZoneEditMode, setPressureZoneEditMode] = useState(false)
-  
-  // Neighborhood risk layer and draw mode
-  const [neighborhoodsRiskVisible, setNeighborhoodsRiskVisible] = useState(false)
-  const [neighborhoodRiskDrawMode, setNeighborhoodRiskDrawMode] = useState(false)
-  const [neighborhoodRiskDrawLevel, setNeighborhoodRiskDrawLevel] = useState('high')
-  const [completeNeighborhoodRiskPolygonRequest, setCompleteNeighborhoodRiskPolygonRequest] = useState(0)
-  const [neighborhoodDrawPointCount, setNeighborhoodDrawPointCount] = useState(0)
-  const [neighborhoodRiskEditMode, setNeighborhoodRiskEditMode] = useState(false)
-  const [selectedNeighborhoodRiskPolygonId, setSelectedNeighborhoodRiskPolygonId] = useState(null)
-  const [deleteNeighborhoodRiskPolygonId, setDeleteNeighborhoodRiskPolygonId] = useState(null)
-  
-  const requestCompleteNeighborhoodRiskPolygon = () => {
-    setCompleteNeighborhoodRiskPolygonRequest((n) => n + 1)
-  }
-  
-  const requestDeleteNeighborhoodRiskPolygon = (polygonId) => {
-    setDeleteNeighborhoodRiskPolygonId(polygonId)
-  }
   
   // Burst gradient parameters
   const [burstGradientParams, setBurstGradientParams] = useState(() => {
@@ -366,14 +322,8 @@ export const PanelProvider = ({ children }) => {
     localStorage.setItem('complaintHeatmapParams', JSON.stringify(params))
   }
   
-  // Selected pressure zone for detail panel
-  const [selectedZone, setSelectedZone] = useState(null)
-  
   // Selected sensor for detail panel
   const [selectedSensor, setSelectedSensor] = useState(null)
-  
-  // Open water mains - array of water main objects for multiple dialogs
-  const [openWaterMains, setOpenWaterMains] = useState([])
   
   // Map zoom request - for triggering zoom from panels
   const [mapZoomRequest, setMapZoomRequest] = useState(null)
@@ -381,32 +331,16 @@ export const PanelProvider = ({ children }) => {
   const requestMapZoom = (bounds) => {
     setMapZoomRequest({ bounds, timestamp: Date.now() })
   }
-  
-  const addWaterMain = (waterMain) => {
-    // Use the feature's id property - ensure it's a string
-    const waterMainId = String(waterMain.id || waterMain.properties?.id || Date.now())
-    
-    // Check if already open by comparing IDs
-    const exists = openWaterMains.some(wm => wm.uniqueId === waterMainId)
-    if (!exists) {
-      // Store with a stable uniqueId property
-      setOpenWaterMains(prev => [...prev, { 
-        ...waterMain, 
-        uniqueId: waterMainId 
-      }])
-    }
-  }
-  
-  const removeWaterMain = (waterMainId) => {
-    console.log('Removing water main with ID:', waterMainId)
-    console.log('Current open water mains:', openWaterMains.map(wm => wm.uniqueId))
-    setOpenWaterMains(prev => {
-      const filtered = prev.filter(wm => wm.uniqueId !== waterMainId)
-      console.log('After filter:', filtered.map(wm => wm.uniqueId))
-      return filtered
-    })
-  }
 
+  /** Incremented so WaterOSCopilotPanel can run the same "critical complaints" chat + map flow as Briefing */
+  const [criticalComplaintsCopilotTrigger, setCriticalComplaintsCopilotTrigger] = useState(0)
+
+  const requestCriticalComplaintsCopilotFlow = () => {
+    setCopilotVisible(true)
+    setActiveTab('chat')
+    setCriticalComplaintsCopilotTrigger((n) => n + 1)
+  }
+  
   const sendEventToCopilot = (context) => {
     // Set the event context
     setEventContext(context)
@@ -510,10 +444,6 @@ export const PanelProvider = ({ children }) => {
     setLayersVisible((prev) => !prev)
   }
 
-  const togglePressureZone = () => {
-    setPressureZoneVisible((prev) => !prev)
-  }
-
   const value = {
     selectedPersona,
     setSelectedPersona,
@@ -528,11 +458,6 @@ export const PanelProvider = ({ children }) => {
     layersVisible,
     setLayersVisible,
     toggleLayers,
-    pressureZoneVisible,
-    setPressureZoneVisible,
-    togglePressureZone,
-    selectedZone,
-    setSelectedZone,
     activeTab,
     setActiveTab,
     chatMessages,
@@ -560,6 +485,8 @@ export const PanelProvider = ({ children }) => {
     setFilteredLeakageEventId,
     showFilteredComplaintsOnly,
     setShowFilteredComplaintsOnly,
+    mapComplaintsPriorityFilter,
+    setMapComplaintsPriorityFilter,
     leakageEvents,
     setLeakageEvents,
     saveLeakageEvents,
@@ -603,10 +530,6 @@ export const PanelProvider = ({ children }) => {
     workOrdersVisible,
     setWorkOrdersVisible,
     toggleWorkOrders,
-    pressureZonesVisible,
-    setPressureZonesVisible,
-    activeRiskLevels,
-    setActiveRiskLevels,
     pressureSensorsVisible,
     setPressureSensorsVisible,
     activeSensorStatuses,
@@ -621,55 +544,20 @@ export const PanelProvider = ({ children }) => {
     setBurstEventsVisible,
     burstImplementationComplete,
     setBurstImplementationComplete,
-    waterMainsVisible,
-    setWaterMainsVisible,
-    waterMainsDrawMode,
-    setWaterMainsDrawMode,
-    waterMainsDrawLevel,
-    setWaterMainsDrawLevel,
-    completeWaterMainRequest,
-    requestCompleteWaterMain,
-    waterMainDrawPointCount,
-    setWaterMainDrawPointCount,
-    waterMainsEditMode,
-    setWaterMainsEditMode,
-    selectedWaterMainId,
-    setSelectedWaterMainId,
-    deleteWaterMainId,
-    requestDeleteWaterMain,
     sensorEditMode,
     setSensorEditMode,
     burstEditMode,
     setBurstEditMode,
-    pressureZoneEditMode,
-    setPressureZoneEditMode,
-    neighborhoodsRiskVisible,
-    setNeighborhoodsRiskVisible,
-    neighborhoodRiskDrawMode,
-    setNeighborhoodRiskDrawMode,
-    neighborhoodRiskDrawLevel,
-    setNeighborhoodRiskDrawLevel,
-    completeNeighborhoodRiskPolygonRequest,
-    requestCompleteNeighborhoodRiskPolygon,
-    neighborhoodDrawPointCount,
-    setNeighborhoodDrawPointCount,
-    neighborhoodRiskEditMode,
-    setNeighborhoodRiskEditMode,
-    selectedNeighborhoodRiskPolygonId,
-    setSelectedNeighborhoodRiskPolygonId,
-    deleteNeighborhoodRiskPolygonId,
-    requestDeleteNeighborhoodRiskPolygon,
     burstGradientParams,
     updateBurstGradientParams,
     complaintHeatmapParams,
     updateComplaintHeatmapParams,
     selectedSensor,
     setSelectedSensor,
-    openWaterMains,
-    addWaterMain,
-    removeWaterMain,
     mapZoomRequest,
     requestMapZoom,
+    criticalComplaintsCopilotTrigger,
+    requestCriticalComplaintsCopilotFlow,
   }
 
   return <PanelContext.Provider value={value}>{children}</PanelContext.Provider>

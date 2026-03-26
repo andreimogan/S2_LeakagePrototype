@@ -8,15 +8,12 @@ import {
   EventAffectedAreaPanel,
   WaterOSCopilotPanel,
   ManageMapLayersPanel,
-  PressureZonePanel,
   SensorDetailsPanel,
-  PipeDetailsPanel,
 } from './components/panels'
 import { PanelProvider, usePanelContext } from './contexts/PanelContext'
 
 function AppContent() {
   const { 
-    openWaterMains, 
     approvalQueueVisible, 
     setApprovalQueueVisible,
     complaintsListVisible,
@@ -61,15 +58,7 @@ function AppContent() {
         <EventAffectedAreaPanel />
         <WaterOSCopilotPanel />
         <ManageMapLayersPanel />
-        <PressureZonePanel />
         <SensorDetailsPanel />
-        {openWaterMains.map((waterMain, index) => (
-          <PipeDetailsPanel 
-            key={waterMain.uniqueId} 
-            waterMain={waterMain} 
-            index={index}
-          />
-        ))}
       </main>
     </>
   )

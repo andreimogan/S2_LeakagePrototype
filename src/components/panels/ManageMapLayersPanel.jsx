@@ -9,13 +9,9 @@ import {
   ChevronDown,
   MousePointer,
   MousePointerClick,
-  Trash2,
-  Edit3,
 } from 'lucide-react'
 import { usePanelContext } from '../../contexts/PanelContext'
 import { useDraggable } from '../../hooks/useDraggable'
-import { getNeighborhoodRiskData } from '../../data/neighborhoodRiskData'
-import { getWaterMainsData } from '../../data/waterMainsData'
 
 const categories = [
   { 
@@ -51,7 +47,13 @@ const categories = [
             { id: 'unknown', label: 'Unknown', color: '#6B7280', active: true }
           ]
         }
-      }
+      },
+      {
+        id: 'complaint-heatmap',
+        name: 'Complaint Heatmap',
+        active: false,
+        expanded: false,
+      },
     ]
   },
   { 
@@ -91,56 +93,12 @@ const categories = [
       }
     ]
   },
-  { 
-    id: 'assets', 
-    name: 'Infrastructure Assets', 
-    activeCount: 0,
-    layers: [
-      {
-        id: 'water-mains',
-        name: 'Water Mains',
-        active: false,
-        expanded: false
-      }
-    ]
-  },
-  { 
-    id: 'boundaries', 
-    name: 'Boundaries & Risk', 
-    activeCount: 1,
-    layers: [
-      { id: 'neighborhoods-risk', name: 'Neighborhoods | Risk', active: false, expanded: false },
-      { 
-        id: 'pressure-zones', 
-        name: 'Pressure Zones', 
-        active: true, 
-        expanded: true,
-        legend: {
-          title: 'Risk Level',
-          description: 'Pressure zone risk classification',
-          riskLevels: [
-            { id: 'high', label: 'High Risk', color: 'rgb(212, 51, 59)', active: true },
-            { id: 'medium', label: 'Medium Risk', color: 'rgb(241, 167, 40)', active: true },
-            { id: 'low', label: 'Low Risk', color: 'rgb(127, 190, 72)', active: true },
-            { id: 'unknown', label: 'Unknown', color: 'rgb(158, 158, 158)', active: false },
-          ]
-        }
-      },
-      { id: 'city-blocks-risk', name: 'City Blocks | Risk', active: false, expanded: false },
-      { id: 'city-blocks-complaints', name: 'City Blocks | Complaint Counts', active: false, expanded: false },
-      { id: 'city-blocks-top', name: 'City Blocks | Top Complaints', active: false, expanded: false },
-    ]
-  },
-  { id: 'risk', name: 'Risk / Health', activeCount: 0, layers: [] },
 ]
 
 export default function ManageMapLayersPanel() {
   const { 
     layersVisible, 
     toggleLayers, 
-    pressureZonesVisible, 
-    setPressureZonesVisible, 
-    setActiveRiskLevels,
     pressureSensorsVisible,
     setPressureSensorsVisible,
     setActiveSensorStatuses,
@@ -159,38 +117,11 @@ export default function ManageMapLayersPanel() {
     setComplaintInteractionMode,
     complaintHeatmapVisible,
     setComplaintHeatmapVisible,
-    waterMainsVisible,
-    setWaterMainsVisible,
-    waterMainsDrawMode,
-    setWaterMainsDrawMode,
-    waterMainsDrawLevel,
-    setWaterMainsDrawLevel,
-    requestCompleteWaterMain,
-    waterMainDrawPointCount,
-    waterMainsEditMode,
-    setWaterMainsEditMode,
-    selectedWaterMainId,
-    setSelectedWaterMainId,
-    requestDeleteWaterMain,
+    setMapComplaintsPriorityFilter,
     sensorEditMode,
     setSensorEditMode,
     burstEditMode,
     setBurstEditMode,
-    pressureZoneEditMode,
-    setPressureZoneEditMode,
-    neighborhoodsRiskVisible,
-    setNeighborhoodsRiskVisible,
-    neighborhoodRiskDrawMode,
-    setNeighborhoodRiskDrawMode,
-    neighborhoodRiskDrawLevel,
-    setNeighborhoodRiskDrawLevel,
-    requestCompleteNeighborhoodRiskPolygon,
-    neighborhoodDrawPointCount,
-    neighborhoodRiskEditMode,
-    setNeighborhoodRiskEditMode,
-    selectedNeighborhoodRiskPolygonId,
-    setSelectedNeighborhoodRiskPolygonId,
-    requestDeleteNeighborhoodRiskPolygon,
     burstGradientParams,
     updateBurstGradientParams,
     complaintHeatmapParams,
@@ -218,53 +149,14 @@ export default function ManageMapLayersPanel() {
   }, [layersVisible, setPosition])
   const [showActiveList, setShowActiveList] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [expandedCategories, setExpandedCategories] = useState({ boundaries: true, sensors: true, events: true })
-  const [expandedLayers, setExpandedLayers] = useState({ 'pressure-zones': true, 'pressure-sensors': true, 'pressure-sensors-map': true, 'burst-events': true })
-  const [neighborhoodPolygons, setNeighborhoodPolygons] = useState([])
-  const [deletePolygonId, setDeletePolygonId] = useState(null)
+  const [expandedCategories, setExpandedCategories] = useState({})
+  const [expandedLayers, setExpandedLayers] = useState({})
   const [layerStates, setLayerStates] = useState({
     'burst-events': burstEventsVisible,
     'customer-complaints': customerComplaintsVisible,
-    'pressure-zones': pressureZonesVisible,
+    'complaint-heatmap': complaintHeatmapVisible,
     'pressure-sensors': pressureSensorsVisible,
     'pressure-sensors-map': pressureSensorsMapVisible,
-    'neighborhoods-risk': false,
-    'water-mains': false,
-    'city-blocks-risk': false,
-    'city-blocks-complaints': complaintHeatmapVisible,
-    'city-blocks-top': false,
-  })
-  
-  // Load neighborhood polygons when layer is expanded
-  useEffect(() => {
-    if (expandedLayers['neighborhoods-risk']) {
-      const data = getNeighborhoodRiskData()
-      setNeighborhoodPolygons(data.features || [])
-    }
-  }, [expandedLayers])
-  
-  // Refresh polygon list when draw mode ends
-  useEffect(() => {
-    if (!neighborhoodRiskDrawMode && expandedLayers['neighborhoods-risk']) {
-      const data = getNeighborhoodRiskData()
-      setNeighborhoodPolygons(data.features || [])
-    }
-  }, [neighborhoodRiskDrawMode, expandedLayers])
-  
-  // Refresh polygon list when a delete is requested
-  useEffect(() => {
-    if (deletePolygonId) {
-      const data = getNeighborhoodRiskData()
-      setNeighborhoodPolygons(data.features || [])
-      setDeletePolygonId(null)
-    }
-  }, [deletePolygonId])
-  
-  const [riskLevelStates, setRiskLevelStates] = useState({
-    high: true,
-    medium: true,
-    low: true,
-    unknown: false,
   })
   const [sensorStatusStates, setSensorStatusStates] = useState({
     normal: true,
@@ -287,49 +179,7 @@ export default function ManageMapLayersPanel() {
     unknown: true
   })
   
-  const [waterMains, setWaterMains] = useState([])
-  const [deleteWaterMainIdLocal, setDeleteWaterMainIdLocal] = useState(null)
-  
-  // Load water mains list when layer is expanded
-  useEffect(() => {
-    if (expandedLayers['water-mains']) {
-      const data = getWaterMainsData()
-      setWaterMains(data.features || [])
-    }
-  }, [expandedLayers])
-  
-  // Refresh when draw mode ends
-  useEffect(() => {
-    if (!waterMainsDrawMode && expandedLayers['water-mains']) {
-      const data = getWaterMainsData()
-      setWaterMains(data.features || [])
-    }
-  }, [waterMainsDrawMode, expandedLayers])
-  
-  // Refresh when delete is requested
-  useEffect(() => {
-    if (deleteWaterMainIdLocal) {
-      const data = getWaterMainsData()
-      setWaterMains(data.features || [])
-      setDeleteWaterMainIdLocal(null)
-    }
-  }, [deleteWaterMainIdLocal])
-  
   // Sync context state changes to local layer states
-  useEffect(() => {
-    setLayerStates(prev => ({
-      ...prev,
-      'pressure-zones': pressureZonesVisible
-    }))
-  }, [pressureZonesVisible])
-  
-  useEffect(() => {
-    setLayerStates(prev => ({
-      ...prev,
-      'water-mains': waterMainsVisible
-    }))
-  }, [waterMainsVisible])
-
   useEffect(() => {
     setLayerStates(prev => ({
       ...prev,
@@ -361,7 +211,7 @@ export default function ManageMapLayersPanel() {
   useEffect(() => {
     setLayerStates(prev => ({
       ...prev,
-      'city-blocks-complaints': complaintHeatmapVisible
+      'complaint-heatmap': complaintHeatmapVisible
     }))
   }, [complaintHeatmapVisible])
   
@@ -383,36 +233,22 @@ export default function ManageMapLayersPanel() {
       [layerId]: newState
     }))
     
-    // Sync with context for pressure zones layer
-    if (layerId === 'pressure-zones') {
-      setPressureZonesVisible(newState)
-    }
-    // Sync with context for pressure sensors layer
     if (layerId === 'pressure-sensors') {
       setPressureSensorsVisible(newState)
     }
-    // Sync with context for pressure sensors map (gauge-style) layer
     if (layerId === 'pressure-sensors-map') {
       setPressureSensorsMapVisible(newState)
     }
-    // Sync with context for burst events layer
     if (layerId === 'burst-events') {
       setBurstEventsVisible(newState)
     }
-    // Sync with context for customer complaints layer
     if (layerId === 'customer-complaints') {
       setCustomerComplaintsVisible(newState)
+      if (!newState) {
+        setMapComplaintsPriorityFilter(null)
+      }
     }
-    // Sync with context for neighborhoods risk layer
-    if (layerId === 'neighborhoods-risk') {
-      setNeighborhoodsRiskVisible(newState)
-    }
-    // Sync with context for water mains layer
-    if (layerId === 'water-mains') {
-      setWaterMainsVisible(newState)
-    }
-    // Sync with context for complaint heatmap layer
-    if (layerId === 'city-blocks-complaints') {
+    if (layerId === 'complaint-heatmap') {
       setComplaintHeatmapVisible(newState)
     }
   }
@@ -421,20 +257,6 @@ export default function ManageMapLayersPanel() {
     setExpandedLayers(prev => ({
       ...prev,
       [layerId]: !prev[layerId]
-    }))
-  }
-  
-  const toggleRiskLevel = (riskId) => {
-    const newState = !riskLevelStates[riskId]
-    setRiskLevelStates(prev => ({
-      ...prev,
-      [riskId]: newState
-    }))
-    
-    // Sync with context
-    setActiveRiskLevels(prev => ({
-      ...prev,
-      [riskId]: newState
     }))
   }
   
@@ -1001,31 +823,6 @@ export default function ManageMapLayersPanel() {
                                     {burstEditMode ? 'Exit Edit' : 'Edit'}
                                   </button>
                                 )}
-                                {layer.id === 'pressure-zones' && (
-                                  <button
-                                    type="button"
-                                    className="flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-semibold transition-colors"
-                                    style={{
-                                      backgroundColor: pressureZoneEditMode ? 'var(--color-purple-700)' : 'var(--color-gray-700)',
-                                      color: pressureZoneEditMode ? 'var(--color-purple-100)' : 'var(--color-gray-200)',
-                                      borderColor: pressureZoneEditMode ? 'var(--color-purple-600)' : 'var(--color-gray-600)',
-                                    }}
-                                    onClick={() => setPressureZoneEditMode(!pressureZoneEditMode)}
-                                    onMouseEnter={(e) => {
-                                      if (!pressureZoneEditMode) {
-                                        e.currentTarget.style.backgroundColor = 'var(--color-gray-600)'
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (!pressureZoneEditMode) {
-                                        e.currentTarget.style.backgroundColor = 'var(--color-gray-700)'
-                                      }
-                                    }}
-                                    title={pressureZoneEditMode ? 'Exit edit mode' : 'Enter edit mode to reshape pressure zone polygon'}
-                                  >
-                                    {pressureZoneEditMode ? 'Exit Edit' : 'Edit'}
-                                  </button>
-                                )}
                               </div>
                             </div>
                             
@@ -1261,310 +1058,8 @@ export default function ManageMapLayersPanel() {
                             </ul>
                           </div>
                         )}
-                        {/* Water Mains: draw controls */}
-                        {expandedLayers[layer.id] && layer.id === 'water-mains' && (
-                          <div
-                            className="mt-2 rounded-md border px-2.5 py-2"
-                            style={{
-                              borderColor: 'var(--color-gray-600)',
-                              backgroundColor: 'rgba(26, 29, 34, 0.6)',
-                            }}
-                          >
-                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-gray-300)' }}>
-                              Risk Level
-                            </p>
-                            <p className="text-xs leading-snug mb-2" style={{ color: 'var(--color-gray-300)' }}>
-                              Draw water main lines on map (high / medium / low risk)
-                            </p>
-                            {!waterMainsDrawMode ? (
-                              <button
-                                type="button"
-                                className="flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-semibold transition-colors w-full justify-center"
-                                style={{
-                                  backgroundColor: 'var(--color-purple-700)',
-                                  color: 'var(--color-purple-100)',
-                                  borderColor: 'var(--color-purple-600)',
-                                }}
-                                onClick={() => setWaterMainsDrawMode(true)}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'var(--color-purple-600)'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'var(--color-purple-700)'
-                                }}
-                                title="Click on the map to draw water main line points, then Complete"
-                              >
-                                Add Water Main
-                              </button>
-                            ) : (
-                              <>
-                                <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-gray-300)' }}>
-                                  Risk for new water main
-                                </p>
-                                <div className="flex gap-1.5 mb-2">
-                                  {['high', 'medium', 'low'].map((level) => (
-                                    <button
-                                      key={level}
-                                      type="button"
-                                      className="flex-1 px-2 py-1 rounded text-xs font-medium border transition-colors"
-                                      style={{
-                                        backgroundColor: waterMainsDrawLevel === level ? (level === 'high' ? 'var(--color-red-600)' : level === 'medium' ? 'var(--color-orange-600)' : 'var(--color-green-600)') : 'var(--color-gray-700)',
-                                        color: waterMainsDrawLevel === level ? 'white' : 'var(--color-gray-300)',
-                                        borderColor: waterMainsDrawLevel === level ? (level === 'high' ? 'var(--color-red-500)' : level === 'medium' ? 'var(--color-orange-500)' : 'var(--color-green-500)') : 'var(--color-gray-600)',
-                                      }}
-                                      onClick={() => setWaterMainsDrawLevel(level)}
-                                    >
-                                      {level.charAt(0).toUpperCase() + level.slice(1)}
-                                    </button>
-                                  ))}
-                                </div>
-                                <p className="text-xs mb-2" style={{ color: 'var(--color-gray-400)' }}>
-                                  Points: {waterMainDrawPointCount} (min 2 needed)
-                                </p>
-                                <p className="text-xs mb-2" style={{ color: 'var(--color-gray-500)', fontStyle: 'italic' }}>
-                                  Click map to add points. Double-click or press Enter to finish.
-                                </p>
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    className="flex-1 h-7 rounded-md border px-2 text-xs font-semibold transition-colors"
-                                    style={{
-                                      backgroundColor: waterMainDrawPointCount >= 2 ? 'var(--color-green-700)' : 'var(--color-gray-700)',
-                                      color: waterMainDrawPointCount >= 2 ? 'var(--color-green-100)' : 'var(--color-gray-400)',
-                                      borderColor: waterMainDrawPointCount >= 2 ? 'var(--color-green-600)' : 'var(--color-gray-600)',
-                                    }}
-                                    onClick={requestCompleteWaterMain}
-                                    disabled={waterMainDrawPointCount < 2}
-                                    onMouseEnter={(e) => { if (waterMainDrawPointCount >= 2) e.currentTarget.style.backgroundColor = 'var(--color-green-600)' }}
-                                    onMouseLeave={(e) => { if (waterMainDrawPointCount >= 2) e.currentTarget.style.backgroundColor = 'var(--color-green-700)' }}
-                                    title={waterMainDrawPointCount >= 2 ? 'Complete water main line' : 'Add at least 2 points'}
-                                  >
-                                    Complete
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="flex-1 h-7 rounded-md border px-2 text-xs font-semibold transition-colors"
-                                    style={{
-                                      backgroundColor: 'var(--color-gray-700)',
-                                      color: 'var(--color-gray-200)',
-                                      borderColor: 'var(--color-gray-600)',
-                                    }}
-                                    onClick={() => setWaterMainsDrawMode(false)}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-gray-600)' }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-gray-700)' }}
-                                    title="Cancel drawing"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                            
-                            {/* List of existing water mains */}
-                            {waterMains.length > 0 && !waterMainsDrawMode && (
-                              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--color-gray-600)' }}>
-                                <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-gray-300)' }}>
-                                  Saved Water Mains ({waterMains.length})
-                                </p>
-                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                  {waterMains.map((feature, idx) => {
-                                    const riskLevel = feature.properties?.riskLevel || 'medium'
-                                    const riskColor = riskLevel === 'high' ? 'var(--color-red-500)' : 
-                                                     riskLevel === 'medium' ? 'var(--color-orange-500)' : 
-                                                     'var(--color-green-500)'
-                                    return (
-                                      <div
-                                        key={feature.id || idx}
-                                        className="flex items-center gap-2 px-2 py-1.5 rounded text-xs border"
-                                        style={{
-                                          backgroundColor: 'var(--color-gray-800)',
-                                          borderColor: 'var(--color-gray-700)',
-                                        }}
-                                      >
-                                        <span
-                                          className="w-3 h-0.5 rounded-sm shrink-0"
-                                          style={{ backgroundColor: riskColor }}
-                                        />
-                                        <span className="flex-1 truncate" style={{ color: 'var(--color-gray-200)' }}>
-                                          {riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)} Risk Main #{idx + 1}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          className="shrink-0 p-1 rounded hover:bg-gray-700 transition-colors"
-                                          style={{ color: 'var(--color-red-400)' }}
-                                          onClick={() => {
-                                            requestDeleteWaterMain(feature.id)
-                                            setDeleteWaterMainIdLocal(feature.id)
-                                          }}
-                                          title="Delete water main"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {/* Neighborhoods | Risk: legend and draw controls */}
-                        {expandedLayers[layer.id] && layer.id === 'neighborhoods-risk' && (
-                          <div
-                            className="mt-2 rounded-md border px-2.5 py-2"
-                            style={{
-                              borderColor: 'var(--color-gray-600)',
-                              backgroundColor: 'rgba(26, 29, 34, 0.6)',
-                            }}
-                          >
-                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-gray-300)' }}>
-                              Risk Level
-                            </p>
-                            <p className="text-xs leading-snug mb-2" style={{ color: 'var(--color-gray-300)' }}>
-                              Same as Pressure Zones (high / medium / low). Toggle in Pressure Zones applies here too.
-                            </p>
-                            {!neighborhoodRiskDrawMode ? (
-                              <button
-                                type="button"
-                                className="flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-semibold transition-colors w-full justify-center"
-                                style={{
-                                  backgroundColor: 'var(--color-purple-700)',
-                                  color: 'var(--color-purple-100)',
-                                  borderColor: 'var(--color-purple-600)',
-                                }}
-                                onClick={() => setNeighborhoodRiskDrawMode(true)}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'var(--color-purple-600)'
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor = 'var(--color-purple-700)'
-                                }}
-                                title="Click on the map to add polygon vertices, then Complete"
-                              >
-                                Add polygon
-                              </button>
-                            ) : (
-                              <>
-                                <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--color-gray-300)' }}>
-                                  Risk for new polygon
-                                </p>
-                                <div className="flex gap-1.5 mb-2">
-                                  {['high', 'medium', 'low'].map((level) => (
-                                    <button
-                                      key={level}
-                                      type="button"
-                                      className="flex-1 px-2 py-1 rounded text-xs font-medium border transition-colors"
-                                      style={{
-                                        backgroundColor: neighborhoodRiskDrawLevel === level ? (level === 'high' ? 'var(--color-red-600)' : level === 'medium' ? 'var(--color-orange-600)' : 'var(--color-green-600)') : 'var(--color-gray-700)',
-                                        color: neighborhoodRiskDrawLevel === level ? 'white' : 'var(--color-gray-300)',
-                                        borderColor: neighborhoodRiskDrawLevel === level ? (level === 'high' ? 'var(--color-red-500)' : level === 'medium' ? 'var(--color-orange-500)' : 'var(--color-green-500)') : 'var(--color-gray-600)',
-                                      }}
-                                      onClick={() => setNeighborhoodRiskDrawLevel(level)}
-                                    >
-                                      {level.charAt(0).toUpperCase() + level.slice(1)}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="flex gap-1.5">
-                                  <button
-                                    type="button"
-                                    className="flex-1 h-7 rounded-md border px-2 text-xs font-semibold transition-colors"
-                                    style={{
-                                      backgroundColor: neighborhoodDrawPointCount >= 3 ? 'var(--color-green-700)' : 'var(--color-gray-700)',
-                                      color: neighborhoodDrawPointCount >= 3 ? 'var(--color-green-100)' : 'var(--color-gray-400)',
-                                      borderColor: neighborhoodDrawPointCount >= 3 ? 'var(--color-green-600)' : 'var(--color-gray-600)',
-                                    }}
-                                    onClick={requestCompleteNeighborhoodRiskPolygon}
-                                    disabled={neighborhoodDrawPointCount < 3}
-                                    onMouseEnter={(e) => { if (neighborhoodDrawPointCount >= 3) e.currentTarget.style.backgroundColor = 'var(--color-green-600)' }}
-                                    onMouseLeave={(e) => { if (neighborhoodDrawPointCount >= 3) e.currentTarget.style.backgroundColor = 'var(--color-green-700)' }}
-                                    title={neighborhoodDrawPointCount >= 3 ? 'Close polygon and add' : 'Add at least 3 points on the map'}
-                                  >
-                                    Complete
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="flex-1 h-7 rounded-md border px-2 text-xs font-semibold transition-colors"
-                                    style={{
-                                      backgroundColor: 'var(--color-gray-700)',
-                                      color: 'var(--color-gray-200)',
-                                      borderColor: 'var(--color-gray-600)',
-                                    }}
-                                    onClick={() => setNeighborhoodRiskDrawMode(false)}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-gray-600)' }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-gray-700)' }}
-                                    title="Cancel drawing"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                            
-                            {/* List of existing polygons */}
-                            {neighborhoodPolygons.length > 0 && !neighborhoodRiskDrawMode && (
-                              <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--color-gray-600)' }}>
-                                <p className="text-xs font-medium mb-2" style={{ color: 'var(--color-gray-300)' }}>
-                                  Saved Polygons ({neighborhoodPolygons.length})
-                                </p>
-                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                  {neighborhoodPolygons.map((feature, idx) => {
-                                    const riskLevel = feature.properties?.riskLevel || 'medium'
-                                    const riskColor = riskLevel === 'high' ? 'var(--color-red-500)' : riskLevel === 'medium' ? 'var(--color-orange-500)' : 'var(--color-green-500)'
-                                    const isEditing = selectedNeighborhoodRiskPolygonId === feature.id
-                                    return (
-                                      <div
-                                        key={feature.id || idx}
-                                        className="flex items-center gap-2 px-2 py-1.5 rounded text-xs border"
-                                        style={{
-                                          backgroundColor: isEditing ? 'rgba(147, 51, 234, 0.2)' : 'var(--color-gray-800)',
-                                          borderColor: isEditing ? 'var(--color-purple-600)' : 'var(--color-gray-700)',
-                                        }}
-                                      >
-                                        <span
-                                          className="w-3 h-3 rounded-sm shrink-0"
-                                          style={{ backgroundColor: riskColor }}
-                                        />
-                                        <span className="flex-1 truncate" style={{ color: 'var(--color-gray-200)' }}>
-                                          {riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)} Risk #{idx + 1}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          className="shrink-0 p-1 rounded hover:bg-gray-700 transition-colors"
-                                          style={{ color: isEditing ? 'var(--color-purple-400)' : 'var(--color-blue-400)' }}
-                                          onClick={() => {
-                                            if (isEditing) {
-                                              setSelectedNeighborhoodRiskPolygonId(null)
-                                              setNeighborhoodRiskEditMode(false)
-                                            } else {
-                                              setSelectedNeighborhoodRiskPolygonId(feature.id)
-                                              setNeighborhoodRiskEditMode(true)
-                                            }
-                                          }}
-                                          title={isEditing ? 'Exit edit mode' : 'Edit polygon vertices'}
-                                        >
-                                          <Edit3 className="w-3 h-3" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="shrink-0 p-1 rounded hover:bg-gray-700 transition-colors"
-                                          style={{ color: 'var(--color-red-400)' }}
-                                          onClick={() => setDeletePolygonId(feature.id)}
-                                          onMouseDown={() => requestDeleteNeighborhoodRiskPolygon(feature.id)}
-                                          title="Delete polygon"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {/* City Blocks | Complaints: Heatmap customization controls */}
-                        {expandedLayers[layer.id] && layer.id === 'city-blocks-complaints' && (
+                        {/* Complaint heatmap settings */}
+                        {expandedLayers[layer.id] && layer.id === 'complaint-heatmap' && (
                           <div
                             className="mt-2 rounded-md border px-2.5 py-2"
                             style={{

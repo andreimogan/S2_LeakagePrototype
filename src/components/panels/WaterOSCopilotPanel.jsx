@@ -33,6 +33,24 @@ import ImpactMiniMap from '../maps/ImpactMiniMap'
 import { BURST_EVENTS } from '../../data/burstEvents'
 import { CUSTOMER_COMPLAINTS } from '../../data/customerComplaints'
 
+/** [west, south, east, north] for map fitBounds — padded so a single point still zooms sensibly */
+function boundsFromComplaintFeatures(features) {
+  if (!features?.length) return null
+  let west = Infinity
+  let south = Infinity
+  let east = -Infinity
+  let north = -Infinity
+  for (const f of features) {
+    const [lng, lat] = f.geometry.coordinates
+    west = Math.min(west, lng)
+    east = Math.max(east, lng)
+    south = Math.min(south, lat)
+    north = Math.max(north, lat)
+  }
+  const pad = 0.002
+  return [west - pad, south - pad, east + pad, north + pad]
+}
+
 const questions = [
   { icon: Sun, text: 'Morning Briefing' },
   { icon: AlertTriangle, text: 'Show me all critical complaints', type: 'critical-complaints' },
@@ -163,9 +181,17 @@ export default function WaterOSCopilotPanel() {
     isAiResponding,
     aiError,
     createWorkOrder,
+    setBurstEventsVisible,
+    setCustomerComplaintsVisible,
+    setFilteredLeakageEventId,
+    setShowFilteredComplaintsOnly,
+    setMapComplaintsPriorityFilter,
+    requestMapZoom,
+    criticalComplaintsCopilotTrigger,
   } = usePanelContext()
   const { position, isDragging, dragRef, handleMouseDown } = useDraggable({ x: 645, y: 104 })
   const chatEndRef = useRef(null)
+  const criticalCopilotTriggerHandledRef = useRef(0)
   const [expandedCardId, setExpandedCardId] = useState(null)
   const [viewOptimizedStates, setViewOptimizedStates] = useState({})
   const [implementationStates, setImplementationStates] = useState({}) // Track implementation progress per item
@@ -279,6 +305,19 @@ export default function WaterOSCopilotPanel() {
         ))
         return
       }
+
+      const leakageDemoOnly =
+        eventContextMessages.length > 0 &&
+        eventContextMessages.every(
+          (msg) =>
+            msg.type === 'event-context' &&
+            typeof msg.context?.eventName === 'string' &&
+            msg.context.eventName.includes('Leakage Event Demo')
+        )
+      if (leakageDemoOnly) {
+        handleCriticalComplaintsFlow()
+        return
+      }
       
       // For event contexts, continue with existing logic
       // Get the relevant context(s) with eventId
@@ -311,6 +350,7 @@ export default function WaterOSCopilotPanel() {
   
   // Handle critical complaints flow
   const handleCriticalComplaintsFlow = async () => {
+    setActiveTab('chat')
     // Get all High priority complaints
     const criticalComplaints = CUSTOMER_COMPLAINTS.features.filter(
       complaint => complaint.properties.priority === 'High'
@@ -367,7 +407,30 @@ export default function WaterOSCopilotPanel() {
     }
     
     setChatMessages(prev => [...prev, aiResponse])
+
+    setBurstEventsVisible(false)
+    setShowFilteredComplaintsOnly(false)
+    setFilteredLeakageEventId(null)
+    setMapComplaintsPriorityFilter('High')
+    setCustomerComplaintsVisible(true)
+
+    const bounds = boundsFromComplaintFeatures(criticalComplaints)
+    if (bounds) {
+      requestMapZoom(bounds)
+    }
   }
+
+  useEffect(() => {
+    if (
+      !criticalComplaintsCopilotTrigger ||
+      criticalComplaintsCopilotTrigger <= criticalCopilotTriggerHandledRef.current
+    ) {
+      return
+    }
+    criticalCopilotTriggerHandledRef.current = criticalComplaintsCopilotTrigger
+    handleCriticalComplaintsFlow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot when Event panel requests this flow
+  }, [criticalComplaintsCopilotTrigger])
   
   // Handle generating recommendations for complaints
   const handleGenerateRecommendations = async (messageId) => {

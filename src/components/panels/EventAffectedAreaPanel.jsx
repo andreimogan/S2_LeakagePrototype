@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { usePanelContext } from '../../contexts/PanelContext'
 import { useDraggable } from '../../hooks/useDraggable'
+import { CUSTOMER_COMPLAINTS } from '../../data/customerComplaints'
 
 const EVENTS = [
   {
@@ -140,10 +141,13 @@ export default function EventAffectedAreaPanel() {
   const [implementationState, setImplementationState] = useState(null) // 'in-progress' or 'complete'
   const [implementationSteps, setImplementationSteps] = useState([])
   
-  const { sendEventToCopilot, eventAreaVisible, setEventAreaVisible, setWaterMainsVisible, setPressureZonesVisible, setPressureSensorsVisible, requestMapZoom, addSuccessNotification, setBurstImplementationComplete, openLeakageEventDashboard, setCustomerComplaintsVisible, setComplaintHeatmapVisible, setFilteredLeakageEventId, setShowFilteredComplaintsOnly, openComplaintsListFiltered } = usePanelContext()
+  const { sendEventToCopilot, requestCriticalComplaintsCopilotFlow, eventAreaVisible, setEventAreaVisible, setPressureSensorsVisible, requestMapZoom, addSuccessNotification, setBurstImplementationComplete, openLeakageEventDashboard, setBurstEventsVisible, setCustomerComplaintsVisible, setFilteredLeakageEventId, setShowFilteredComplaintsOnly, setMapComplaintsPriorityFilter, openComplaintsListFiltered, createWorkOrder } = usePanelContext()
   const { position, isDragging, dragRef, handleMouseDown } = useDraggable({ x: 24, y: 80 })
 
   const selectedEvent = EVENTS.find((e) => e.id === selectedEventId) ?? EVENTS[0]
+  const criticalComplaints = CUSTOMER_COMPLAINTS.features.filter(
+    (complaint) => complaint.properties.priority === 'High'
+  )
   
   const buildEventContext = (event) => ({
     eventName: event.label,
@@ -156,6 +160,10 @@ export default function EventAffectedAreaPanel() {
   })
   
   const handleSendToCopilot = () => {
+    if (selectedEventId === 'leakage-event-demo') {
+      requestCriticalComplaintsCopilotFlow()
+      return
+    }
     const context = buildEventContext(selectedEvent)
     sendEventToCopilot(context)
   }
@@ -185,8 +193,18 @@ export default function EventAffectedAreaPanel() {
   const generateInitialSolution = () => {
     const recommendation = selectedEvent.affectedPipes.recommendation
     const customersAffected = selectedEvent.affectedPipes.customersAffected
-    
-    const message = `Based on the ${recommendation.title.toLowerCase()} recommendation for the ${selectedEvent.label}, I suggest the following actions:
+
+    const message = selectedEventId === 'leakage-event-demo'
+      ? `Based on the current critical complaints in ${selectedEvent.label}, I suggest immediate complaint-led actions:
+
+1. Prioritize and dispatch field crews to all ${criticalComplaints.length} High-priority complaint locations
+2. Validate service pressure and curb stop status at each complaint point
+3. Run rapid leak confirmation checks around the Pine St cluster (acoustic + visual)
+4. Create work orders for each critical complaint so dispatch can execute immediately
+5. Keep customer updates active for the ${customersAffected.toLocaleString()} potentially affected residents
+
+This plan resolves the highest-risk complaints first and accelerates leak isolation.`
+      : `Based on the ${recommendation.title.toLowerCase()} recommendation for the ${selectedEvent.label}, I suggest the following actions:
 
 1. Immediately isolate Zone 5 to limit water loss and prevent further system degradation
 2. Dispatch Crew Alpha with emergency evacuation equipment to the burst location
@@ -212,13 +230,20 @@ This approach will minimize customer impact and enable faster recovery.`
     setImplementationState('in-progress')
     setImplementationSteps([])
     
-    const steps = [
-      { id: 'crew', label: 'Searching for available crew members', delay: 1500 },
-      { id: 'equipment', label: 'Checking equipment availability', delay: 1200 },
-      { id: 'closure', label: 'Submitting lane/road closure request', delay: 1800 },
-      { id: 'permit', label: 'Processing work permits', delay: 1500 },
-      { id: 'dispatch', label: 'Dispatching field crew', delay: 1000 },
-    ]
+    const steps = selectedEventId === 'leakage-event-demo'
+      ? [
+          { id: 'critical-scan', label: 'Identifying all High-priority complaints', delay: 900 },
+          { id: 'location-validate', label: 'Validating complaint locations and priorities', delay: 900 },
+          { id: 'workorders', label: 'Creating recommended work orders for all critical complaints', delay: 1200 },
+          { id: 'dispatch-ready', label: 'Marking work orders ready for dispatch', delay: 900 },
+        ]
+      : [
+          { id: 'crew', label: 'Searching for available crew members', delay: 1500 },
+          { id: 'equipment', label: 'Checking equipment availability', delay: 1200 },
+          { id: 'closure', label: 'Submitting lane/road closure request', delay: 1800 },
+          { id: 'permit', label: 'Processing work permits', delay: 1500 },
+          { id: 'dispatch', label: 'Dispatching field crew', delay: 1000 },
+        ]
     
     // Execute steps sequentially
     for (const step of steps) {
@@ -229,13 +254,32 @@ This approach will minimize customer impact and enable faster recovery.`
       addSuccessNotification(step.label)
     }
     
+    if (selectedEventId === 'leakage-event-demo') {
+      let createdCount = 0
+      criticalComplaints.forEach((complaint) => {
+        createWorkOrder({
+          complaintId: complaint.id,
+          type: complaint.properties.themeName,
+          priority: complaint.properties.priority,
+          location: complaint.properties.location,
+          instructions: 'Perform meter test plus curb stop isolation',
+        })
+        createdCount++
+      })
+      addSuccessNotification(`Created ${createdCount} work orders for critical complaints`)
+    }
+
     // Mark as complete
     await new Promise(resolve => setTimeout(resolve, 800))
     setImplementationState('complete')
     setBurstImplementationComplete(true)
     
     // Final success notification
-    addSuccessNotification('Recommended action implemented successfully')
+    addSuccessNotification(
+      selectedEventId === 'leakage-event-demo'
+        ? 'Recommended critical complaint work orders created successfully'
+        : 'Recommended action implemented successfully'
+    )
   }
   
   const handleModify = () => {
@@ -551,22 +595,16 @@ This approach will minimize customer impact and enable faster recovery.`
                   setShowingAffectedPipes(true)
                   // If the selected event is "Major Water Main Burst - Downtown District"
                   if (selectedEventId === 'water-main-burst-downtown') {
-                    // Toggle on Water Mains and Network Meters layers
-                    setWaterMainsVisible(true)
                     setPressureSensorsVisible(true)
-                    // Toggle off Pressure Zones layer
-                    setPressureZonesVisible(false)
-                    // Zoom to downtown area (St. Louis downtown bounds)
                     requestMapZoom([-90.205, 38.625, -90.185, 38.635])
                   }
                   // If the selected event is "Leakage Event Demo"
                   if (selectedEventId === 'leakage-event-demo') {
-                    // Filter complaints to only show those connected to this leakage event
+                    setBurstEventsVisible(false)
+                    setMapComplaintsPriorityFilter(null)
+                    setCustomerComplaintsVisible(true)
                     setFilteredLeakageEventId('leakage-event-001')
-                    setShowFilteredComplaintsOnly(true) // Show only filtered complaints (independent of customerComplaintsVisible)
-                    // Show city blocks complaint heatmap (filtered to leakage event)
-                    setComplaintHeatmapVisible(true)
-                    // Zoom to Pine St cluster area
+                    setShowFilteredComplaintsOnly(true)
                     requestMapZoom([-90.2015, 38.6298, -90.1995, 38.6318])
                   }
                 }}
@@ -801,7 +839,9 @@ This approach will minimize customer impact and enable faster recovery.`
                                 color: 'var(--color-gray-300)',
                                 lineHeight: '1.5'
                               }}>
-                                The recommended action has been successfully implemented. Field crew has been dispatched to {selectedEvent.label.split('-')[1] || 'the location'}. Work permits and road closures are in place.
+                                {selectedEventId === 'leakage-event-demo'
+                                  ? `Recommended work orders for all ${criticalComplaints.length} critical complaints were created successfully and are ready for dispatch.`
+                                  : `The recommended action has been successfully implemented. Field crew has been dispatched to ${selectedEvent.label.split('-')[1] || 'the location'}. Work permits and road closures are in place.`}
                               </p>
                             </div>
                           )}
